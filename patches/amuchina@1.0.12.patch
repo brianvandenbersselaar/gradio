@@ -1,0 +1,29 @@
+diff --git a/dist/utils.js b/dist/utils.js
+index dd82a5199f596d4c76335adf0038863271e0ed0e..cd44403bd04cfbbcfcf970caf1f048d3776ddd9b 100644
+--- a/dist/utils.js
++++ b/dist/utils.js
+@@ -63,7 +63,8 @@ const traverseElementsBasic = (parent, callback) => {
+     }
+ };
+ const traverseElementsIterator = (parent, callback) => {
+-    const iterator = document.createNodeIterator(parent, NodeFilter.SHOW_ELEMENT);
++    const ownerDocument = parent.ownerDocument || parent; // "parent" is itself a Document when its "ownerDocument" is null
++    const iterator = ownerDocument.createNodeIterator(parent, NodeFilter.SHOW_ELEMENT); // Creating this on "document" instead would attach the iterator to the main document, which then retains "parent" forever
+     let current;
+     while (current = iterator.nextNode()) {
+         const parent = current.parentNode;
+diff --git a/src/utils.ts b/src/utils.ts
+index bb8d9c24190bdd6af3f05237fe342e70eaeaac4f..f85f80bbb7809f6d11fb849484be9b085a3068dd 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -127,7 +127,9 @@ const traverseElementsBasic = ( parent: Node, callback: ( node: Element, parent:
+ 
+ const traverseElementsIterator = ( parent: Node, callback: ( node: Element, parent: Node ) => void ) => {
+ 
+-  const iterator = document.createNodeIterator ( parent, NodeFilter.SHOW_ELEMENT );
++  const ownerDocument = parent.ownerDocument || ( parent as Document ); // "parent" is itself a Document when its "ownerDocument" is null
++
++  const iterator = ownerDocument.createNodeIterator ( parent, NodeFilter.SHOW_ELEMENT ); // Creating this on "document" instead would attach the iterator to the main document, which then retains "parent" forever
+ 
+   let current: Node | null | undefined;
+ 

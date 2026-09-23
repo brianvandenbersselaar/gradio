@@ -7,3 +7,7 @@ packages:
 
 patchedDependencies:
   '@sveltejs/package': patches/@sveltejs__package.patch
+  # Pinned to an exact version on purpose: if amuchina is bumped, pnpm fails
+  # rather than silently dropping the patch. Remove once the fix is released
+  # upstream. See js/sanitize/browser.ts for what it fixes.
+  'amuchina@1.0.12': patches/amuchina@1.0.12.patch

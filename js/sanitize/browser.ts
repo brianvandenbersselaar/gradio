@@ -14,6 +14,13 @@ configuration.allowElements = (configuration.allowElements ?? []).filter(
 );
 const amuchina = new Amuchina(configuration);
 
+// The parse goes through DOMParser because the documents it creates have no
+// browsing context, so nothing here loads a resource or fires an inline handler.
+// That throwaway document is also why patches/amuchina@1.0.12.patch exists:
+// amuchina walked it with a node iterator created on the main `document`, and an
+// iterator is attached to the document that creates it and holds its root, so
+// every call left the main document holding on to a whole parsed message. The
+// patch creates the iterator on the root's own document instead.
 export function sanitize(source: string): string {
 	const node = new DOMParser().parseFromString(source, "text/html");
 	const sanitized_node = amuchina.sanitize(node);

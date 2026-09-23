@@ -62,4 +62,31 @@ describe("sanitize", () => {
 		expect(p?.getAttribute("style")).toBe("color: red;");
 		expect(p?.textContent).toBe("hello");
 	});
+
+	// Guards patches/amuchina@1.0.12.patch. A node iterator is attached to the
+	// document that creates it and holds on to its root, so creating one on the
+	// main document to walk a DOMParser document pins that document and its whole
+	// node tree for the lifetime of the page. See browser.ts.
+	test("does not attach node iterators to the main document", () => {
+		const create_node_iterator = document.createNodeIterator;
+		const roots: Node[] = [];
+
+		document.createNodeIterator = function (
+			this: Document,
+			root: Node,
+			...rest: unknown[]
+		) {
+			roots.push(root);
+			// @ts-expect-error - passing the remaining arguments straight through to the real method
+			return create_node_iterator.call(this, root, ...rest);
+		} as typeof document.createNodeIterator;
+
+		try {
+			sanitize("<p>hello <strong>world</strong></p>");
+		} finally {
+			document.createNodeIterator = create_node_iterator;
+		}
+
+		expect(roots).toEqual([]);
+	});
 });
