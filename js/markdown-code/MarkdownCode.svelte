@@ -3,7 +3,7 @@
 	import { create_marked } from "./utils";
 	import { create_block_parser, type Block } from "./blocks";
 	import { render_blocks, type RenderedBlock } from "./render";
-	import { sanitize } from "@gradio/sanitize";
+	import { sanitize_fragment } from "@gradio/sanitize";
 	import "./prism.css";
 	import { standardHtmlAndSvgTags } from "./html-tags";
 	import type { ThemeMode } from "@gradio/core";
@@ -92,8 +92,9 @@
 	}
 
 	function to_fragment(html: string): DocumentFragment {
+		if (sanitize_html) return sanitize_fragment(html);
 		const template = document.createElement("template");
-		template.innerHTML = sanitize_html && sanitize ? sanitize(html) : html;
+		template.innerHTML = html;
 		return template.content;
 	}
 

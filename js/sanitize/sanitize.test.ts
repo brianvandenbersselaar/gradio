@@ -1,8 +1,20 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { sanitize } from "./browser";
+import { sanitize, sanitize_fragment } from "./browser";
 
-describe("sanitize", () => {
+function serialize(fragment: DocumentFragment): string {
+	const template = document.createElement("template");
+	template.content.append(fragment);
+	return template.innerHTML;
+}
+
+describe.each([
+	["sanitize", sanitize],
+	[
+		"sanitize_fragment",
+		(source: string) => serialize(sanitize_fragment(source))
+	]
+])("%s", (_, sanitize) => {
 	test("opens non-fragment links in a new tab", () => {
 		const node = new DOMParser().parseFromString(
 			sanitize('<a href="/docs">docs</a>'),
@@ -74,6 +86,53 @@ describe("sanitize", () => {
 			expect(spy).not.toHaveBeenCalled();
 		} finally {
 			spy.mockRestore();
+		}
+	});
+});
+
+describe("sanitize_fragment", () => {
+	test("parses once, without a throwaway document", () => {
+		const spy = vi.spyOn(DOMParser.prototype, "parseFromString");
+		try {
+			const fragment = sanitize_fragment("<p><b>bold</b> text</p>");
+			expect(fragment).toBeInstanceOf(DocumentFragment);
+			expect(serialize(fragment)).toBe("<p><b>bold</b> text</p>");
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	test("does not create node iterators on any document", () => {
+		// Template content lives in a document that lasts as long as the page; an iterator
+		// created there would keep every sanitized fragment alive (#13884).
+		const spy = vi.spyOn(Document.prototype, "createNodeIterator");
+		try {
+			sanitize_fragment("<div><p><b>bold</b> <a href='/x'>link</a></p></div>");
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	test.each([
+		'<math><mtext><table><mglyph><style><img src=x onerror="alert(1)">',
+		'<svg></p><style><a id="</style><img src=1 onerror=alert(1)>">',
+		'<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+		'<form><math><mtext></form><form><mglyph><svg><mtext><textarea><path id="</textarea><img onerror=alert(1) src=1>">'
+	])("leaves no event handlers once inserted: %s", (payload) => {
+		const inserted = document.createElement("div");
+		inserted.append(sanitize_fragment(payload));
+		const reparsed = document.createElement("div");
+		reparsed.innerHTML = sanitize(payload);
+
+		for (const container of [inserted, reparsed]) {
+			const handlers = [...container.querySelectorAll("*")].flatMap((el) =>
+				[...el.attributes]
+					.filter((a) => a.name.startsWith("on"))
+					.map((a) => a.name)
+			);
+			expect(handlers).toEqual([]);
 		}
 	});
 });

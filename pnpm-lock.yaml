@@ -9,7 +9,7 @@ patchedDependencies:
     hash: 4bf60d897bf9a1418645763e4338b3223b9458b10046bd6cde08601581f05183
     path: patches/@sveltejs__package.patch
   amuchina@1.0.12:
-    hash: 477320eef09b056093be138c91f714b8917aa11c0436c692db0bdab3ff9989b1
+    hash: a8a7a73dbc5fa863eb0114f18e7f080f73e1ae679789df57e93d73ad622574fe
     path: patches/amuchina@1.0.12.patch
 
 importers:
@@ -2115,7 +2115,7 @@ importers:
     dependencies:
       amuchina:
         specifier: ^1.0.12
-        version: 1.0.12(patch_hash=477320eef09b056093be138c91f714b8917aa11c0436c692db0bdab3ff9989b1)
+        version: 1.0.12(patch_hash=a8a7a73dbc5fa863eb0114f18e7f080f73e1ae679789df57e93d73ad622574fe)
       sanitize-html:
         specifier: ^2.17.7
         version: 2.17.7
@@ -11385,7 +11385,7 @@ snapshots:
       json-schema-traverse: 0.4.1
       uri-js: 4.4.1
 
-  amuchina@1.0.12(patch_hash=477320eef09b056093be138c91f714b8917aa11c0436c692db0bdab3ff9989b1): {}
+  amuchina@1.0.12(patch_hash=a8a7a73dbc5fa863eb0114f18e7f080f73e1ae679789df57e93d73ad622574fe): {}
 
   ansi-colors@4.1.3: {}
 

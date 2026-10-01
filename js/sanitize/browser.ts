@@ -14,10 +14,18 @@ configuration.allowElements = (configuration.allowElements ?? []).filter(
 );
 const amuchina = new Amuchina(configuration);
 
-export function sanitize(source: string): string {
-	const node = new DOMParser().parseFromString(source, "text/html");
-	const sanitized_node = amuchina.sanitize(node);
-	walk_nodes(sanitized_node.body, "A", (node) => {
+/**
+ * Sanitize HTML into nodes that can be inserted as they are.
+ *
+ * Parsing into a <template> is inert like DOMParser (no scripts run, nothing loads), but does not
+ * create a document per call. Inserting the returned nodes directly also skips the serialize and
+ * re-parse round trip of `sanitize`, which is where mutation XSS comes from.
+ */
+export function sanitize_fragment(source: string): DocumentFragment {
+	const template = document.createElement("template");
+	template.innerHTML = source;
+	const fragment = amuchina.sanitize(template.content);
+	walk_nodes(fragment, "A", (node) => {
 		if (node instanceof HTMLElement && "target" in node) {
 			if (should_open_link_in_new_tab(node.getAttribute("href"))) {
 				node.setAttribute("target", "_blank");
@@ -25,8 +33,14 @@ export function sanitize(source: string): string {
 			}
 		}
 	});
+	return fragment;
+}
 
-	return sanitized_node.body.innerHTML;
+export function sanitize(source: string): string {
+	// Serialized through a template so the nodes never enter the main document (and start loading).
+	const template = document.createElement("template");
+	template.content.append(sanitize_fragment(source));
+	return template.innerHTML;
 }
 
 function walk_nodes(
