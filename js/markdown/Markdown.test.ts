@@ -300,3 +300,44 @@ describe("Edge cases", () => {
 		expect(change).not.toHaveBeenCalled();
 	});
 });
+
+describe("streaming updates", () => {
+	afterEach(() => cleanup());
+
+	test("keeps the DOM of finished blocks while text is appended", async () => {
+		const { set_data, getByText } = await render(Markdown, {
+			...default_props,
+			value: "Eerste alinea.\n\nTweede"
+		});
+		const first = getByText("Eerste alinea.");
+
+		for (const value of [
+			"Eerste alinea.\n\nTweede alinea",
+			"Eerste alinea.\n\nTweede alinea.\n\n- punt"
+		]) {
+			await set_data({ value });
+		}
+
+		await waitFor(() => expect(getByText("punt")).toBeVisible());
+		expect(getByText("Eerste alinea.")).toBe(first);
+		expect(first.isConnected).toBe(true);
+	});
+
+	test("renders the latest text when updates arrive faster than renders", async () => {
+		const { set_data, getByText, queryByText } = await render(Markdown, {
+			...default_props,
+			value: "start"
+		});
+
+		const updates = [
+			"een",
+			"een twee",
+			"een twee drie",
+			"een twee drie vier"
+		].map((value) => set_data({ value }));
+		await Promise.all(updates);
+
+		await waitFor(() => expect(getByText("een twee drie vier")).toBeVisible());
+		expect(queryByText("een twee drie", { exact: true })).toBeNull();
+	});
+});

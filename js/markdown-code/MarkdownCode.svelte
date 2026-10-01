@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
+	import { tick } from "svelte";
 	import { create_marked } from "./utils";
+	import { create_block_parser, type Block } from "./blocks";
+	import { render_blocks, type RenderedBlock } from "./render";
 	import { sanitize } from "@gradio/sanitize";
 	import "./prism.css";
 	import { standardHtmlAndSvgTags } from "./html-tags";
@@ -41,22 +43,60 @@
 		line_breaks,
 		latex_delimiters: latex_delimiters || []
 	});
+	const parse_blocks = create_block_parser(
+		marked,
+		latex_delimiters || [],
+		(html) => (allow_tags ? escapeTags(html, allow_tags) : html)
+	);
 
-	let html = $state("");
-	let render_token = 0;
+	let rendered: RenderedBlock[] = [];
+	let rendering = false;
+	let pending: string | null = null;
 
+	// One render at a time; updates that arrive meanwhile collapse into the latest text, so a slow
+	// render never falls behind a fast stream.
 	$effect(() => {
-		const token = ++render_token;
-		if (message && message.trim()) {
-			process_message(message).then((result) => {
-				// drop results from superseded renders so streaming chunks
-				// don't clobber each other out of order
-				if (token === render_token) html = result;
-			});
-		} else {
-			html = "";
-		}
+		pending = message ?? "";
+		if (!rendering) void render_pending();
 	});
+
+	async function render_pending(): Promise<void> {
+		rendering = true;
+		try {
+			while (pending !== null && el) {
+				const text = pending;
+				pending = null;
+				await render(text);
+			}
+		} finally {
+			rendering = false;
+		}
+	}
+
+	async function render(text: string): Promise<void> {
+		let blocks: Block[] = [];
+		if (text.trim()) {
+			blocks = render_markdown
+				? await parse_blocks(text)
+				: [
+						{
+							key: text,
+							html: allow_tags ? escapeTags(text, allow_tags) : text
+						}
+					];
+		}
+		const result = render_blocks(el, rendered, blocks, to_fragment);
+		rendered = result.rendered;
+		await post_process(result.inserted, text);
+		onload?.();
+	}
+
+	function to_fragment(html: string): DocumentFragment {
+		const template = document.createElement("template");
+		template.innerHTML = sanitize_html && sanitize ? sanitize(html) : html;
+		return template.content;
+	}
+
 	let katex_loaded = false;
 
 	function has_math_syntax(text: string): boolean {
@@ -68,10 +108,6 @@
 			(delimiter) =>
 				text.includes(delimiter.left) && text.includes(delimiter.right)
 		);
-	}
-
-	function escapeRegExp(string: string): string {
-		return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	}
 
 	function escapeTags(
@@ -110,94 +146,49 @@
 		return content;
 	}
 
-	async function process_message(value: string): Promise<string> {
-		let parsedValue = value;
-		if (render_markdown) {
-			const latexBlocks: string[] = [];
-			latex_delimiters.forEach((delimiter, index) => {
-				const leftDelimiter = escapeRegExp(delimiter.left);
-				const rightDelimiter = escapeRegExp(delimiter.right);
-				const regex = new RegExp(
-					`${leftDelimiter}([\\s\\S]+?)${rightDelimiter}`,
-					"g"
-				);
-				parsedValue = parsedValue.replace(regex, (match, p1) => {
-					latexBlocks.push(match);
-					return `%%%LATEX_BLOCK_${latexBlocks.length - 1}%%%`;
-				});
-			});
+	// KaTeX and mermaid only see the nodes this render inserted; earlier blocks were processed when
+	// they were inserted and are left untouched.
+	async function post_process(inserted: Node[], text: string): Promise<void> {
+		const elements = inserted.filter(
+			(node): node is HTMLElement => node instanceof HTMLElement
+		);
+		if (elements.length === 0) return;
 
-			parsedValue = (await marked.parse(parsedValue)) as string;
-
-			parsedValue = parsedValue.replace(
-				/%%%LATEX_BLOCK_(\d+)%%%/g,
-				(match, p1) => latexBlocks[parseInt(p1, 10)]
-			);
-		}
-
-		if (allow_tags) {
-			parsedValue = escapeTags(parsedValue, allow_tags);
-		}
-
-		if (sanitize_html && sanitize) {
-			parsedValue = sanitize(parsedValue);
-		}
-		return parsedValue;
-	}
-
-	async function render_html(value: string): Promise<void> {
-		if (latex_delimiters.length > 0 && value && has_math_syntax(value)) {
+		if (has_math_syntax(text)) {
 			if (!katex_loaded) {
-				await Promise.all([
-					import("katex/dist/katex.min.css"),
-					import("katex/contrib/auto-render")
-				]).then(([, { default: render_math_in_element }]) => {
-					katex_loaded = true;
-					render_math_in_element(el, {
-						delimiters: latex_delimiters,
-						throwOnError: false
-					});
-				});
-			} else {
-				const { default: render_math_in_element } =
-					await import("katex/contrib/auto-render");
-				render_math_in_element(el, {
+				await import("katex/dist/katex.min.css");
+				katex_loaded = true;
+			}
+			const { default: render_math_in_element } =
+				await import("katex/contrib/auto-render");
+			for (const element of elements) {
+				render_math_in_element(element, {
 					delimiters: latex_delimiters,
 					throwOnError: false
 				});
 			}
 		}
 
-		if (el) {
-			const mermaidDivs = el.querySelectorAll(".mermaid");
-			if (mermaidDivs.length > 0) {
-				await tick();
-				const { default: mermaid } = await import("mermaid");
+		const mermaid_nodes = elements.flatMap((element) => [
+			...(element.matches(".mermaid") ? [element] : []),
+			...element.querySelectorAll<HTMLElement>(".mermaid")
+		]);
+		if (mermaid_nodes.length > 0) {
+			await tick();
+			const { default: mermaid } = await import("mermaid");
 
-				mermaid.initialize({
-					startOnLoad: false,
-					theme: theme_mode === "dark" ? "dark" : "default",
-					securityLevel: "antiscript"
-				});
-				await mermaid.run({
-					nodes: Array.from(mermaidDivs).map((node) => node as HTMLElement)
-				});
-			}
+			mermaid.initialize({
+				startOnLoad: false,
+				theme: theme_mode === "dark" ? "dark" : "default",
+				securityLevel: "antiscript"
+			});
+			await mermaid.run({ nodes: mermaid_nodes });
 		}
 	}
-
-	$effect(() => {
-		if (el && document.body.contains(el)) {
-			render_html(message).then(() => onload?.());
-		} else {
-			console.error("Element is not in the DOM");
-		}
-	});
 </script>
 
-<span class:chatbot bind:this={el} class="md" class:prose={render_markdown}>
-	{@html html}
-</span>
+<span class:chatbot bind:this={el} class="md" class:prose={render_markdown}
+></span>
 
 <style>
 	span {

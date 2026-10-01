@@ -224,6 +224,13 @@ const renderer: Partial<Omit<Renderer, "constructor" | "options">> = {
 
 const slugger = new GithubSlugger();
 
+export function heading_slug_source(raw: string): string {
+	return raw
+		.toLowerCase()
+		.trim()
+		.replace(/<[!\/a-z].*?>/gi, "");
+}
+
 export function create_marked({
 	header_links,
 	line_breaks,
@@ -261,11 +268,9 @@ export function create_marked({
 					name: "heading",
 					level: "block",
 					renderer(token) {
-						const raw = token.raw
-							.toLowerCase()
-							.trim()
-							.replace(/<[!\/a-z].*?>/gi, "");
-						const id = "h" + slugger.slug(raw);
+						// parse_blocks assigns ids per render; the slugger covers direct marked.parse calls.
+						const id =
+							token.id ?? "h" + slugger.slug(heading_slug_source(token.raw));
 						const level = token.depth;
 						const text = this.parser.parseInline(token.tokens!);
 
