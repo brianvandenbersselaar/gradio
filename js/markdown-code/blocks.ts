@@ -50,6 +50,13 @@ export function replace_latex(
  * message. The output is identical to a full `marked.parse`: every top-level token runs through the
  * same hooks, `walkTokens` (async highlighting) and parser.
  *
+ * Known limit: the unit of reuse is a top-level token, so one large token that keeps growing is
+ * still rebuilt as a whole on every update. The common case is a long list whose items are
+ * separated by blank lines (a "loose" list), which marked lexes as a single token, and long tables.
+ * In a streamed answer that is mostly one such list, the cost per update grows with the list
+ * instead of the message. Reusing list items and table rows inside their container element would
+ * remove that, at the cost of re-implementing marked's list and table rendering per item.
+ *
  * `transform` post-processes the HTML of each changed block before it is cached.
  *
  * Calls must not overlap: the cache is replaced at the end of each call.
